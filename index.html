@@ -50,13 +50,9 @@
             transition: opacity 0.3s ease-in-out;
             z-index: 1000;
         }
-        .show {
-            opacity: 1 !important;
-        }
+        .show { opacity: 1 !important; }
 
         /* --- Sticky Column Styles for Horizontal Scroll --- */
-        
-        /* Header cells (sticky top and sticky left) */
         .header-cell.sticky-top {
             position: sticky;
             top: 0;
@@ -70,41 +66,37 @@
             left: 80px; /* Width of col-1 */
             z-index: 20;
         }
-        
-        /* Body cells (sticky left only) */
         .grid-cell.sticky-col-1 {
             position: sticky;
             left: 0;
             z-index: 5;
-            background-color: #f3f4f6; /* gray-100 for Period */
+            background-color: #f3f4f6;
             border-right: 1px solid #e5e7eb;
         }
         .grid-cell.sticky-col-2 {
             position: sticky;
-            left: 80px; /* Width of col-1 */
+            left: 80px;
             z-index: 5;
-            background-color: #f3f4f6; /* gray-100 for Time */
+            background-color: #f3f4f6;
             border-right: 1px solid #e5e7eb;
         }
 
         /* Mobile Adjustments */
         @media (max-width: 768px) {
-            /* 모바일에서 입력 칸들이 수직으로 쌓이도록 함 */
-            .grade-input-group {
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-            }
-            .subject-input {
-                font-size: 0.8rem;
-            }
+            .grade-input-group { display: flex; flex-direction: column; gap: 4px; }
+            .subject-input { font-size: 0.8rem; }
         }
     </style>
+
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, getDoc, updateDoc, collection, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import {
+            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore, doc, setDoc, onSnapshot, getDoc, updateDoc, setLogLevel, FieldPath
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global Firebase instances
         let app;
@@ -117,43 +109,47 @@
         // ****** ⚠️ 외부 브라우저 배포를 위한 설정 (Canvas 환경에서는 자동 무시됨) ******
         // *******************************************************************
         const EXTERNAL_FIREBASE_CONFIG = {
-            // 👇 여기에 본인의 Firebase 프로젝트 설정을 붙여넣으세요. 일반 브라우저 실행 시 필수입니다. 👇
+            // 👇 본인의 Firebase 프로젝트 설정 👇
             apiKey: "AIzaSyDyiPpRmnm1hZWsHAlD860AuhGcdJKEfC4",
             authDomain: "galwon.firebaseapp.com",
-            projectId: "galwon", // <-- Firestore 경로에 사용되므로 필수 입력
-            storageBucket: "galwon.firebasestorage.app",
+            projectId: "galwon",
+            storageBucket: "galwon.firebasestorage.app", // (현재 코드에서는 사용 X)
             messagingSenderId: "165546187721",
             appId: "1:165546187721:web:4ea575eaf31523096f2618",
             measurementId: "G-PXSRPV7ZWM"
-            // 👆 여기에 본인의 Firebase 프로젝트 설정을 붙여넣으세요 👆
         };
-        
-        // Configuration determination: Canvas 환경 변수가 있으면 Canvas 설정 사용, 없으면 외부 설정 사용
+
+        // Canvas vs 외부 브라우저 환경 판별
         const isCanvasEnvironment = typeof __firebase_config !== 'undefined';
-        
-        const firebaseConfig = isCanvasEnvironment ? (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {}) : EXTERNAL_FIREBASE_CONFIG;
-        const appId = isCanvasEnvironment ? (typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId || 'default-app-id-canvas') : (firebaseConfig.projectId || 'default-app-id-external');
-        
+        const firebaseConfig = isCanvasEnvironment
+            ? (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {})
+            : EXTERNAL_FIREBASE_CONFIG;
+
+        const appId = isCanvasEnvironment
+            ? (typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId || 'default-app-id-canvas')
+            : (firebaseConfig.projectId || 'default-app-id-external');
+
+        // ✅ Firestore 문서 경로: 선행 슬래시 제거!
         const SCHEDULE_DOC_PATH = `artifacts/${appId}/public/data/class_schedule/schedule_data`;
 
         // Grades used for input fields
         const GRADE_LIST = ['2학년', '3학년', '4학년', '5학년', '6학년'];
-        
+
         // Time slots
         const PERIOD_TIMES = {
             '1': '09:00~09:40',
             '2': '09:50~10:30',
             '3': '10:40~11:20',
-            '4': '11:30~12:10', // 4교시 종료 후 점심시간 시작
-            '5': '01:00~01:40', // 점심시간(12:10~1:00) 후 5교시 시작
-            '6': '01:40~02:20' // 5교시 후 바로 6교시 시작 (쉬는 시간 없음)
+            '4': '11:30~12:10',
+            '5': '01:00~01:40',
+            '6': '01:40~02:20'
         };
 
         // Date generation (10/27/2025 to 11/14/2025, skipping weekends)
         function generateDates() {
             const dates = [];
-            let currentDate = new Date('2025-10-27T00:00:00'); // Start date
-            const endDate = new Date('2025-11-14T00:00:00'); // End date
+            let currentDate = new Date('2025-10-27T00:00:00');
+            const endDate = new Date('2025-11-14T00:00:00');
 
             while (currentDate <= endDate) {
                 const day = currentDate.getDay();
@@ -179,25 +175,19 @@
         }
 
         // --- Firebase Initialization and Auth ---
-
         async function initFirebase() {
-            // setLogLevel('Debug'); // 디버깅 시 주석 해제
-            
-            // 환경 정보 표시
+            // setLogLevel('debug'); // 필요 시 콘솔 상세 로그
             document.getElementById('env-mode').textContent = isCanvasEnvironment ? 'Canvas 환경' : '외부 브라우저';
 
             try {
-                // 일반 브라우저 환경에서 필수 설정값 누락 체크
                 if (!isCanvasEnvironment && (firebaseConfig.apiKey === "" || firebaseConfig.projectId === "")) {
                     throw new Error("EXTERNAL_FIREBASE_CONFIG에 apiKey와 projectId를 반드시 입력해야 합니다.");
                 }
-                
-                // 앱 초기화
+
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-                
-                // 인증 로직: 초기 토큰이 있으면 사용, 없으면 익명 로그인 시도
+
                 if (isCanvasEnvironment && typeof __initial_auth_token !== 'undefined') {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
@@ -232,34 +222,33 @@
         }
 
         // --- Firestore Realtime Data Listener ---
-
         function startScheduleListener() {
             const docRef = doc(db, SCHEDULE_DOC_PATH);
-            
-            // Set up initial document if it doesn't exist
-            getDoc(docRef).then(docSnap => {
+
+            // 최초 문서가 없으면 생성
+            getDoc(docRef).then(async (docSnap) => {
                 if (!docSnap.exists()) {
-                    console.log("시간표 문서가 없습니다. 초기 문서를 생성합니다.");
                     const initialData = {};
                     ALL_DATES.forEach(date => {
                         initialData[date] = {};
                         for (let p = 1; p <= 6; p++) {
                             const periodData = {};
-                            GRADE_LIST.forEach(grade => {
-                                periodData[grade] = ''; 
-                            });
+                            GRADE_LIST.forEach(grade => { periodData[grade] = ''; });
                             initialData[date][p] = periodData;
                         }
                     });
-                    setDoc(docRef, initialData).catch(e => console.error("초기 문서 생성 실패:", e));
+                    try {
+                        await setDoc(docRef, initialData);
+                    } catch (e) {
+                        console.error("초기 문서 생성 실패:", e);
+                    }
                 }
             }).catch(e => console.error("문서 확인 중 오류:", e));
 
-
-            // Listen for real-time updates
-            onSnapshot(docRef, (doc) => {
-                if (doc.exists()) {
-                    currentScheduleData = doc.data(); // 전역 변수 업데이트
+            // 실시간 구독
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    currentScheduleData = docSnap.data();
                     renderSchedule(currentScheduleData);
                     document.getElementById('loading-message').classList.add('hidden');
                 }
@@ -271,51 +260,41 @@
         }
 
         // --- UI Rendering ---
-
         function renderSchedule(scheduleData) {
             const container = document.getElementById('schedule-container');
             container.innerHTML = '';
-            
-            // Calculate total grid columns: 2 fixed + 15 dates
-            const totalCols = ALL_DATES.length + 2; 
-            // Update grid template style to ensure sticky columns work
+
+            // sticky 열이 정확히 동작하도록 명시적인 그리드 설정
+            container.style.display = 'grid';
             container.style.gridTemplateColumns = `80px 80px repeat(${ALL_DATES.length}, minmax(200px, 1fr))`;
 
-            // Create Header Row
+            // Header Row
             let headerHtml = `<div class="header-cell sticky-top sticky-col-1">교시</div>`;
             headerHtml += `<div class="header-cell sticky-top sticky-col-2">시간</div>`;
-
             ALL_DATES.forEach(date => {
                 const dayName = getDayName(date);
-                // day-header is only sticky top
                 headerHtml += `<div class="header-cell sticky-top day-header">${date.slice(5).replace('-', '/')} (${dayName})</div>`;
             });
             container.innerHTML += headerHtml;
 
-            // Create Period Rows (1 to 6)
+            // Period Rows (1~6)
             for (let period = 1; period <= 6; period++) {
-                // Period (교시) - Sticky Left 1
                 container.innerHTML += `<div class="grid-cell sticky-col-1 bg-gray-200 font-semibold">${period}교시</div>`;
-                // Time (시간) - Sticky Left 2
                 container.innerHTML += `<div class="grid-cell sticky-col-2 bg-gray-200 text-xs text-gray-600">${PERIOD_TIMES[period]}</div>`;
 
-                // Schedule Input Cells
                 ALL_DATES.forEach(date => {
                     const periodData = scheduleData[date]?.[period] || {};
                     const inputHtml = createInputElements(date, period, periodData);
-                    container.innerHTML += `<div class="grid-cell text-left">${inputHtml}</div>`; 
+                    container.innerHTML += `<div class="grid-cell text-left">${inputHtml}</div>`;
                 });
 
-                // Add Lunch Break indicator AFTER 4th period row is fully rendered
+                // 4교시 뒤 점심 안내 줄
                 if (period === 4) {
-                    // Lunch break spans 2 sticky columns and 15 date columns
-                    const colSpan = ALL_DATES.length;
-                    const lunchHtml = `
+                    const lunchHtmlSticky = `
                         <div class="grid-cell sticky-col-1 bg-yellow-100 text-yellow-800 font-bold text-xs py-3 text-center border-b-2 border-yellow-400">점심</div>
                         <div class="grid-cell sticky-col-2 bg-yellow-100 text-yellow-800 font-bold text-xs py-3 text-center border-b-2 border-yellow-400">시간</div>
                     `;
-                    container.innerHTML += lunchHtml;
-                    
+                    container.innerHTML += lunchHtmlSticky;
                     ALL_DATES.forEach(() => {
                         container.innerHTML += `<div class="grid-cell bg-yellow-100 text-yellow-800 font-bold text-xs py-3 border-b-2 border-yellow-400">12:10~1:00</div>`;
                     });
@@ -325,21 +304,18 @@
 
         function createInputElements(date, period, periodData) {
             let inputsHtml = '';
-            
-            // Loop through each grade (2 to 6)
             GRADE_LIST.forEach(grade => {
                 const subject = periodData[grade] || '';
-                
                 inputsHtml += `
                     <div class="flex items-center space-x-1 mb-1 last:mb-0">
                         <label class="text-xs font-semibold text-gray-700 w-10 shrink-0">${grade}:</label>
-                        <input 
-                            type="text" 
-                            value="${subject}" 
+                        <input
+                            type="text"
+                            value="${subject}"
                             placeholder="교과목"
                             title="${date.slice(5).replace('-', '/')} ${period}교시 ${grade} 수업"
-                            data-date="${date}" 
-                            data-period="${period}" 
+                            data-date="${date}"
+                            data-period="${period}"
                             data-grade="${grade}"
                             onchange="handleInputChange(this)"
                             class="subject-input"
@@ -347,158 +323,21 @@
                     </div>
                 `;
             });
-
-            // Wrap inputs in a vertical container
             return `<div class="grade-input-group">${inputsHtml}</div>`;
         }
 
         // --- Firestore Update Handler ---
-
         window.handleInputChange = async function(inputElement) {
             const date = inputElement.getAttribute('data-date');
             const period = inputElement.getAttribute('data-period');
             const grade = inputElement.getAttribute('data-grade');
-            const newValue = inputElement.value; // Subject text
-            
-            // Check if db is initialized before trying to write
+            const newValue = inputElement.value;
+
             if (!db) {
                 showNotification("오류: 데이터베이스 연결이 준비되지 않았습니다.", false);
                 return;
             }
 
             const docRef = doc(db, SCHEDULE_DOC_PATH);
-            // Path to the specific grade's subject within the period object
-            const fieldPath = `${date}.${period}.${grade}`; 
-            
+
             try {
-                 await updateDoc(docRef, { [fieldPath]: newValue });
-                 // console.log(`[${date}, ${period}교시, ${grade}] 업데이트 성공: ${newValue}`);
-            } catch (e) {
-                console.error("데이터 업데이트 실패:", e);
-                showNotification(`업데이트 실패: ${e.message}`, false);
-            }
-        };
-
-        // --- Export Function ---
-        window.exportScheduleToMarkdown = function() {
-            if (Object.keys(currentScheduleData).length === 0) {
-                showNotification("오류: 저장된 시간표 데이터가 없습니다.", false);
-                return;
-            }
-
-            let markdown = `## 🗓️ 최종 확정 수업 시간표 (2025년 10월 27일 ~ 11월 14일)\n\n`;
-            markdown += `| 교시/시간 | ${ALL_DATES.map(d => d.slice(5).replace('-', '/') + ' (' + getDayName(d) + ')').join(' | ')} |\n`;
-            
-            // Generate separator row
-            const separator = ALL_DATES.map(() => '---').join('|');
-            markdown += `| :---: | ${separator} |\n`;
-
-            // Prepare columns for grade subjects for each period/date
-            const periodKeys = ['1', '2', '3', '4', '5', '6'];
-
-            periodKeys.forEach(p => {
-                // Header for the period row
-                let row = `| ${p}교시 (${PERIOD_TIMES[p]}) |`;
-                
-                ALL_DATES.forEach(date => {
-                    const periodData = currentScheduleData[date]?.[p] || {};
-                    let cellContent = '';
-                    
-                    // Combine 5 grade subjects into a single cell
-                    GRADE_LIST.forEach(grade => {
-                        const subject = periodData[grade] || '-';
-                        // Format: 2학: 수학 / 3학: 국어 / ... (using simple delimiter for clean markdown)
-                        cellContent += `**${grade.replace('학년', '학')}**: ${subject} / `;
-                    });
-                    
-                    // Clean up trailing ' / '
-                    cellContent = cellContent.trim().slice(0, -1); 
-                    
-                    row += ` ${cellContent} |`;
-                });
-
-                markdown += row + '\n';
-
-                // Insert Lunch Break separator after 4교시
-                if (p === '4') {
-                    const lunchCells = ALL_DATES.map(() => `**점심 (12:10~1:00)**`).join(' | ');
-                    markdown += `| **점심시간** | ${lunchCells} |\n`;
-                }
-            });
-
-            // Copy to clipboard
-            try {
-                const textarea = document.createElement('textarea');
-                textarea.value = markdown;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textarea);
-                showNotification("시간표 내용이 클립보드에 복사되었습니다!", true);
-            } catch (err) {
-                console.error('클립보드 복사 실패:', err);
-                showNotification("클립보드 복사에 실패했습니다.", false);
-            }
-        };
-
-        // --- Notification Handler ---
-        function showNotification(message, success) {
-            const notification = document.getElementById('notification');
-            notification.textContent = message;
-            notification.style.backgroundColor = success ? '#10b981' : '#ef4444'; 
-            notification.classList.add('show');
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 3000);
-        }
-
-        // Initialize Firebase on window load
-        window.onload = initFirebase;
-    </script>
-</head>
-<body class="bg-gray-50 tgitext-gray-800 p-4 sm:p-8">
-    <!-- Notification Toast -->
-    <div id="notification"></div>
-
-    <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-2xl p-6 sm:p-10">
-        <header class="mb-8 border-b pb-4 flex justify-between items-center flex-wrap gap-4">
-            <div>
-                <h1 class="text-3xl font-extrabold text-gray-900 mb-2">🗓️ 수업 시간표 교과목 공동 입력 시스템</h1>
-                <p class="text-gray-600 text-sm">
-                    **기간:** 2025년 10월 27일 (월) ~ 11월 14일 (금) (총 15일) | **시간:** 1~6교시, 40분 수업
-                </p>
-            </div>
-            <button onclick="exportScheduleToMarkdown()"
-                    class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-200 shrink-0">
-                💾 스케줄 내보내기 (마크다운)
-            </button>
-        </header>
-        
-        <div class="mt-4 mb-8 text-sm p-4 border rounded-lg bg-gray-50">
-            <p class="font-medium">
-                환경 모드: <span id="env-mode" class="font-mono text-gray-700 bg-gray-200 p-1 rounded-md text-xs">확인 중...</span>
-                | 사용자 ID (공동 작업자 확인용): <span id="user-id" class="font-mono text-blue-600 bg-blue-100 p-1 rounded-md text-xs">로딩 중...</span>
-            </p>
-            <p>
-                인증 상태: <span id="auth-status" class="text-red-500 font-semibold">초기화 중...</span>
-            </p>
-            <div id="error-message" class="hidden text-center py-2 text-red-600 font-semibold mt-2 border-t border-red-300"></div>
-        </div>
-
-        <!-- Time Table Structure -->
-        <div id="loading-message" class="text-center py-12 text-lg text-gray-500">
-            실시간 시간표 데이터를 로딩 중입니다...
-        </div>
-
-        <div id="schedule-container" 
-             class="schedule-grid grid border border-gray-200 rounded-lg overflow-x-auto">
-            <!-- Content will be rendered here by JavaScript -->
-        </div>
-        
-        <footer class="mt-8 pt-4 border-t text-sm text-gray-500 text-center">
-            <p>모든 변경 사항은 실시간으로 저장 및 공유됩니다. 교과목 입력 후 엔터(Enter)를 누르거나 다른 칸을 선택하면 저장됩니다.</p>
-        </footer>
-    </div>
-</body>
-</html>
-
