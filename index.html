@@ -1,343 +1,100 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>수업 시간표 교과목 공동 입력 시스템 (10/27 ~ 11/14)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Inter 폰트 사용 */
-        :root { font-family: 'Inter', sans-serif; }
-        /* 기본 레이아웃 및 디자인 */
-        .grid-cell {
-            padding: 4px; /* 셀 내부 패딩 조정 */
-            border: 1px solid #e5e7eb;
-            text-align: center;
-            font-size: 0.85rem;
-        }
-        .header-cell {
-            background-color: #1f2937;
-            color: white;
-            font-weight: 600;
-            padding: 10px 4px;
-        }
-        /* 입력 필드 스타일 */
-        .subject-input {
-            padding: 4px 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 0.375rem;
-            font-size: 0.75rem;
-            width: 100%;
-            transition: all 0.2s;
-        }
-        .subject-input:focus {
-            outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>수업 시간표 교과목 공동 입력 시스템 (10/27 ~ 11/14)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { font-family: 'Inter', sans-serif; }
+    .grid-cell {
+      padding: 4px;
+      border: 1px solid #e5e7eb;
+      text-align: center;
+      font-size: 0.85rem;
+    }
+    .header-cell {
+      background-color: #1f2937;
+      color: white;
+      font-weight: 600;
+      padding: 10px 4px;
+    }
+    .subject-input {
+      padding: 4px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      width: 100%;
+      transition: all 0.2s;
+    }
+    .subject-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59,130,246,.5);
+    }
+    #notification {
+      position: fixed; top: 20px; right: 20px;
+      background-color: #10b981; color: white;
+      padding: 12px 24px; border-radius: .5rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,.15);
+      opacity: 0; transition: opacity .3s ease-in-out;
+      z-index: 1000;
+    }
+    .show { opacity: 1 !important; }
 
-        /* 클립보드 복사 알림 스타일 */
-        #notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background-color: #10b981; /* green-500 */
-            color: white;
-            padding: 12px 24px;
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            opacity: 0;
-            transition: opacity 0.3s ease-in-out;
-            z-index: 1000;
-        }
-        .show { opacity: 1 !important; }
+    /* Sticky */
+    .header-cell.sticky-top { position: sticky; top: 0; z-index: 15; }
+    .header-cell.sticky-col-1 { left: 0; z-index: 20; }
+    .header-cell.sticky-col-2 { left: 80px; z-index: 20; }
+    .grid-cell.sticky-col-1 {
+      position: sticky; left: 0; z-index: 5;
+      background-color: #f3f4f6; border-right: 1px solid #e5e7eb;
+    }
+    .grid-cell.sticky-col-2 {
+      position: sticky; left: 80px; z-index: 5;
+      background-color: #f3f4f6; border-right: 1px solid #e5e7eb;
+    }
 
-        /* --- Sticky Column Styles for Horizontal Scroll --- */
-        .header-cell.sticky-top {
-            position: sticky;
-            top: 0;
-            z-index: 15; /* Below combined header (z-index 20) */
-        }
-        .header-cell.sticky-col-1 {
-            left: 0;
-            z-index: 20; /* Highest for the top-left corner cell */
-        }
-        .header-cell.sticky-col-2 {
-            left: 80px; /* Width of col-1 */
-            z-index: 20;
-        }
-        .grid-cell.sticky-col-1 {
-            position: sticky;
-            left: 0;
-            z-index: 5;
-            background-color: #f3f4f6;
-            border-right: 1px solid #e5e7eb;
-        }
-        .grid-cell.sticky-col-2 {
-            position: sticky;
-            left: 80px;
-            z-index: 5;
-            background-color: #f3f4f6;
-            border-right: 1px solid #e5e7eb;
-        }
+    @media (max-width: 768px) {
+      .grade-input-group { display: flex; flex-direction: column; gap: 4px; }
+      .subject-input { font-size: .8rem; }
+    }
+  </style>
 
-        /* Mobile Adjustments */
-        @media (max-width: 768px) {
-            .grade-input-group { display: flex; flex-direction: column; gap: 4px; }
-            .subject-input { font-size: 0.8rem; }
-        }
-    </style>
+  <!-- Firebase SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import {
+      getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+      getFirestore, doc, setDoc, onSnapshot, getDoc, updateDoc, setLogLevel, FieldPath
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import {
-            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import {
-            getFirestore, doc, setDoc, onSnapshot, getDoc, updateDoc, setLogLevel, FieldPath
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    // =================== 글로벌 상태 ===================
+    let app, db, auth;
+    let userId = 'loading';
+    let currentScheduleData = {};
 
-        // Global Firebase instances
-        let app;
-        let db;
-        let auth;
-        let userId = 'loading';
-        let currentScheduleData = {}; // 현재 시간표 데이터를 저장할 전역 변수
+    // ===== 외부 브라우저용 Firebase 설정 (Canvas 외부에서만 사용) =====
+    const EXTERNAL_FIREBASE_CONFIG = {
+      apiKey: "AIzaSyDyiPpRmnm1hZWsHAlD860AuhGcdJKEfC4",
+      authDomain: "galwon.firebaseapp.com",
+      projectId: "galwon",
+      storageBucket: "galwon.firebasestorage.app",
+      messagingSenderId: "165546187721",
+      appId: "1:165546187721:web:4ea575eaf31523096f2618",
+      measurementId: "G-PXSRPV7ZWM"
+    };
 
-        // *******************************************************************
-        // ****** ⚠️ 외부 브라우저 배포를 위한 설정 (Canvas 환경에서는 자동 무시됨) ******
-        // *******************************************************************
-        const EXTERNAL_FIREBASE_CONFIG = {
-            // 👇 본인의 Firebase 프로젝트 설정 👇
-            apiKey: "AIzaSyDyiPpRmnm1hZWsHAlD860AuhGcdJKEfC4",
-            authDomain: "galwon.firebaseapp.com",
-            projectId: "galwon",
-            storageBucket: "galwon.firebasestorage.app", // (현재 코드에서는 사용 X)
-            messagingSenderId: "165546187721",
-            appId: "1:165546187721:web:4ea575eaf31523096f2618",
-            measurementId: "G-PXSRPV7ZWM"
-        };
+    // 환경 판별
+    const isCanvasEnvironment = typeof __firebase_config !== 'undefined';
+    const firebaseConfig = isCanvasEnvironment
+      ? (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {})
+      : EXTERNAL_FIREBASE_CONFIG;
 
-        // Canvas vs 외부 브라우저 환경 판별
-        const isCanvasEnvironment = typeof __firebase_config !== 'undefined';
-        const firebaseConfig = isCanvasEnvironment
-            ? (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {})
-            : EXTERNAL_FIREBASE_CONFIG;
+    const appId = isCanvasEnvironment
+      ? (typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId || 'default-app-id-canvas')
+      : (firebaseConfig.projectId || 'default-app-id-external');
 
-        const appId = isCanvasEnvironment
-            ? (typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId || 'default-app-id-canvas')
-            : (firebaseConfig.projectId || 'default-app-id-external');
-
-        // ✅ Firestore 문서 경로: 선행 슬래시 제거!
-        const SCHEDULE_DOC_PATH = `artifacts/${appId}/public/data/class_schedule/schedule_data`;
-
-        // Grades used for input fields
-        const GRADE_LIST = ['2학년', '3학년', '4학년', '5학년', '6학년'];
-
-        // Time slots
-        const PERIOD_TIMES = {
-            '1': '09:00~09:40',
-            '2': '09:50~10:30',
-            '3': '10:40~11:20',
-            '4': '11:30~12:10',
-            '5': '01:00~01:40',
-            '6': '01:40~02:20'
-        };
-
-        // Date generation (10/27/2025 to 11/14/2025, skipping weekends)
-        function generateDates() {
-            const dates = [];
-            let currentDate = new Date('2025-10-27T00:00:00');
-            const endDate = new Date('2025-11-14T00:00:00');
-
-            while (currentDate <= endDate) {
-                const day = currentDate.getDay();
-                // 1=월, 2=화, 3=수, 4=목, 5=금
-                if (day >= 1 && day <= 5) {
-                    const yyyy = currentDate.getFullYear();
-                    const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
-                    const dd = String(currentDate.getDate()).padStart(2, '0');
-                    dates.push(`${yyyy}-${mm}-${dd}`);
-                }
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
-            return dates;
-        }
-
-        const ALL_DATES = generateDates();
-
-        // Utility function to get day name
-        function getDayName(dateString) {
-            const date = new Date(dateString);
-            const days = ['일', '월', '화', '수', '목', '금', '토'];
-            return days[date.getDay()];
-        }
-
-        // --- Firebase Initialization and Auth ---
-        async function initFirebase() {
-            // setLogLevel('debug'); // 필요 시 콘솔 상세 로그
-            document.getElementById('env-mode').textContent = isCanvasEnvironment ? 'Canvas 환경' : '외부 브라우저';
-
-            try {
-                if (!isCanvasEnvironment && (firebaseConfig.apiKey === "" || firebaseConfig.projectId === "")) {
-                    throw new Error("EXTERNAL_FIREBASE_CONFIG에 apiKey와 projectId를 반드시 입력해야 합니다.");
-                }
-
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                if (isCanvasEnvironment && typeof __initial_auth_token !== 'undefined') {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        document.getElementById('user-id').textContent = userId;
-                        document.getElementById('auth-status').textContent = '인증 완료';
-                        document.getElementById('auth-status').classList.remove('text-red-500');
-                        document.getElementById('auth-status').classList.add('text-green-500');
-                        startScheduleListener();
-                    } else {
-                        document.getElementById('auth-status').textContent = '인증 실패';
-                        document.getElementById('auth-status').classList.add('text-red-500');
-                    }
-                });
-
-            } catch (error) {
-                console.error("Firebase 초기화 또는 인증 오류:", error);
-                document.getElementById('auth-status').textContent = '초기화 오류';
-                document.getElementById('auth-status').classList.add('text-red-500', 'font-bold');
-                document.getElementById('error-message').innerHTML = `
-                    <div class="font-bold">인증 실패: 초기화 중 오류 발생</div>
-                    <div class="mt-1">${error.message}</div>
-                `;
-                document.getElementById('error-message').classList.remove('hidden');
-                document.getElementById('loading-message').classList.add('hidden');
-            }
-        }
-
-        // --- Firestore Realtime Data Listener ---
-        function startScheduleListener() {
-            const docRef = doc(db, SCHEDULE_DOC_PATH);
-
-            // 최초 문서가 없으면 생성
-            getDoc(docRef).then(async (docSnap) => {
-                if (!docSnap.exists()) {
-                    const initialData = {};
-                    ALL_DATES.forEach(date => {
-                        initialData[date] = {};
-                        for (let p = 1; p <= 6; p++) {
-                            const periodData = {};
-                            GRADE_LIST.forEach(grade => { periodData[grade] = ''; });
-                            initialData[date][p] = periodData;
-                        }
-                    });
-                    try {
-                        await setDoc(docRef, initialData);
-                    } catch (e) {
-                        console.error("초기 문서 생성 실패:", e);
-                    }
-                }
-            }).catch(e => console.error("문서 확인 중 오류:", e));
-
-            // 실시간 구독
-            onSnapshot(docRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    currentScheduleData = docSnap.data();
-                    renderSchedule(currentScheduleData);
-                    document.getElementById('loading-message').classList.add('hidden');
-                }
-            }, (error) => {
-                console.error("실시간 업데이트 오류:", error);
-                document.getElementById('error-message').textContent = `데이터 로딩 오류: ${error.message}`;
-                document.getElementById('error-message').classList.remove('hidden');
-            });
-        }
-
-        // --- UI Rendering ---
-        function renderSchedule(scheduleData) {
-            const container = document.getElementById('schedule-container');
-            container.innerHTML = '';
-
-            // sticky 열이 정확히 동작하도록 명시적인 그리드 설정
-            container.style.display = 'grid';
-            container.style.gridTemplateColumns = `80px 80px repeat(${ALL_DATES.length}, minmax(200px, 1fr))`;
-
-            // Header Row
-            let headerHtml = `<div class="header-cell sticky-top sticky-col-1">교시</div>`;
-            headerHtml += `<div class="header-cell sticky-top sticky-col-2">시간</div>`;
-            ALL_DATES.forEach(date => {
-                const dayName = getDayName(date);
-                headerHtml += `<div class="header-cell sticky-top day-header">${date.slice(5).replace('-', '/')} (${dayName})</div>`;
-            });
-            container.innerHTML += headerHtml;
-
-            // Period Rows (1~6)
-            for (let period = 1; period <= 6; period++) {
-                container.innerHTML += `<div class="grid-cell sticky-col-1 bg-gray-200 font-semibold">${period}교시</div>`;
-                container.innerHTML += `<div class="grid-cell sticky-col-2 bg-gray-200 text-xs text-gray-600">${PERIOD_TIMES[period]}</div>`;
-
-                ALL_DATES.forEach(date => {
-                    const periodData = scheduleData[date]?.[period] || {};
-                    const inputHtml = createInputElements(date, period, periodData);
-                    container.innerHTML += `<div class="grid-cell text-left">${inputHtml}</div>`;
-                });
-
-                // 4교시 뒤 점심 안내 줄
-                if (period === 4) {
-                    const lunchHtmlSticky = `
-                        <div class="grid-cell sticky-col-1 bg-yellow-100 text-yellow-800 font-bold text-xs py-3 text-center border-b-2 border-yellow-400">점심</div>
-                        <div class="grid-cell sticky-col-2 bg-yellow-100 text-yellow-800 font-bold text-xs py-3 text-center border-b-2 border-yellow-400">시간</div>
-                    `;
-                    container.innerHTML += lunchHtmlSticky;
-                    ALL_DATES.forEach(() => {
-                        container.innerHTML += `<div class="grid-cell bg-yellow-100 text-yellow-800 font-bold text-xs py-3 border-b-2 border-yellow-400">12:10~1:00</div>`;
-                    });
-                }
-            }
-        }
-
-        function createInputElements(date, period, periodData) {
-            let inputsHtml = '';
-            GRADE_LIST.forEach(grade => {
-                const subject = periodData[grade] || '';
-                inputsHtml += `
-                    <div class="flex items-center space-x-1 mb-1 last:mb-0">
-                        <label class="text-xs font-semibold text-gray-700 w-10 shrink-0">${grade}:</label>
-                        <input
-                            type="text"
-                            value="${subject}"
-                            placeholder="교과목"
-                            title="${date.slice(5).replace('-', '/')} ${period}교시 ${grade} 수업"
-                            data-date="${date}"
-                            data-period="${period}"
-                            data-grade="${grade}"
-                            onchange="handleInputChange(this)"
-                            class="subject-input"
-                        >
-                    </div>
-                `;
-            });
-            return `<div class="grade-input-group">${inputsHtml}</div>`;
-        }
-
-        // --- Firestore Update Handler ---
-        window.handleInputChange = async function(inputElement) {
-            const date = inputElement.getAttribute('data-date');
-            const period = inputElement.getAttribute('data-period');
-            const grade = inputElement.getAttribute('data-grade');
-            const newValue = inputElement.value;
-
-            if (!db) {
-                showNotification("오류: 데이터베이스 연결이 준비되지 않았습니다.", false);
-                return;
-            }
-
-            const docRef = doc(db, SCHEDULE_DOC_PATH);
-
-            try {
+    // ✅ 선행 슬래시 제거된 Firestore 문서 경로
