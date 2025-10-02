@@ -98,3 +98,335 @@
       : (firebaseConfig.projectId || 'default-app-id-external');
 
     // ✅ 선행 슬래시 제거된 Firestore 문서 경로
+    const SCHEDULE_DOC_PATH = `artifacts/${appId}/public/data/class_schedule/schedule_data`;
+
+    // 학년 / 교시-시간
+    const GRADE_LIST = ['2학년', '3학년', '4학년', '5학년', '6학년'];
+    const PERIOD_TIMES = {
+      '1': '09:00~09:40',
+      '2': '09:50~10:30',
+      '3': '10:40~11:20',
+      '4': '11:30~12:10',
+      '5': '01:00~01:40',
+      '6': '01:40~02:20'
+    };
+
+    // 기간 내 평일 날짜 생성
+    function generateDates() {
+      const dates = [];
+      let currentDate = new Date('2025-10-27T00:00:00');
+      const endDate = new Date('2025-11-14T00:00:00');
+      while (currentDate <= endDate) {
+        const day = currentDate.getDay(); // 0=일, 6=토
+        if (day >= 1 && day <= 5) {
+          const yyyy = currentDate.getFullYear();
+          const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
+          const dd = String(currentDate.getDate()).padStart(2, '0');
+          dates.push(`${yyyy}-${mm}-${dd}`);
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      return dates;
+    }
+    const ALL_DATES = generateDates();
+
+    function getDayName(dateString) {
+      const date = new Date(dateString);
+      const days = ['일', '월', '화', '수', '목', '금', '토'];
+      return days[date.getDay()];
+    }
+
+    // =================== Firebase 초기화 ===================
+    async function initFirebase() {
+      // setLogLevel('debug');
+      document.getElementById('env-mode').textContent = isCanvasEnvironment ? 'Canvas 환경' : '외부 브라우저';
+
+      try {
+        if (!isCanvasEnvironment && (!firebaseConfig.apiKey || !firebaseConfig.projectId)) {
+          throw new Error("EXTERNAL_FIREBASE_CONFIG에 apiKey와 projectId를 반드시 입력하세요.");
+        }
+
+        app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
+
+        if (isCanvasEnvironment && typeof __initial_auth_token !== 'undefined') {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+
+        onAuthStateChanged(auth, (user) => {
+          if (user) {
+            userId = user.uid;
+            document.getElementById('user-id').textContent = userId;
+            const s = document.getElementById('auth-status');
+            s.textContent = '인증 완료';
+            s.classList.remove('text-red-500');
+            s.classList.add('text-green-500');
+            startScheduleListener();
+          } else {
+            document.getElementById('auth-status').textContent = '인증 실패';
+          }
+        });
+
+      } catch (error) {
+        console.error("Firebase 초기화/인증 오류:", error);
+        document.getElementById('auth-status').textContent = '초기화 오류';
+        document.getElementById('auth-status').classList.add('text-red-500', 'font-bold');
+        document.getElementById('error-message').innerHTML = `
+          <div class="font-bold">인증 실패: 초기화 중 오류 발생</div>
+          <div class="mt-1">${error.message}</div>`;
+        document.getElementById('error-message').classList.remove('hidden');
+        document.getElementById('loading-message').classList.add('hidden');
+      }
+    }
+
+    // 초기 데이터 구성 (문서가 없어도 화면을 그리기 위함)
+    function buildInitialData() {
+      const init = {};
+      ALL_DATES.forEach(date => {
+        init[date] = {};
+        for (let p = 1; p <= 6; p++) {
+          const periodData = {};
+          GRADE_LIST.forEach(g => periodData[g] = '');
+          init[date][p] = periodData;
+        }
+      });
+      return init;
+    }
+
+    // =================== 실시간 리스너 ===================
+    function startScheduleListener() {
+      const docRef = doc(db, SCHEDULE_DOC_PATH);
+
+      (async () => {
+        try {
+          const docSnap = await getDoc(docRef);
+
+          // (1) 문서가 없으면 만들어보기
+          if (!docSnap.exists()) {
+            const initialData = buildInitialData();
+            try {
+              await setDoc(docRef, initialData);
+            } catch (e) {
+              // 쓰기 권한이 없으면 임시 표를 먼저 그려주고 알림
+              console.warn('초기 문서 생성 실패(권한 등):', e);
+              currentScheduleData = initialData;
+              renderSchedule(currentScheduleData);
+              document.getElementById('loading-message').classList.add('hidden');
+              showNotification('초기 문서를 만들 권한이 없어 임시 표를 표시합니다. Firestore 규칙에서 쓰기 권한을 허용해 주세요.', false);
+            }
+          }
+
+          // (2) 실시간 구독
+          onSnapshot(docRef, (snap) => {
+            if (snap.exists()) {
+              currentScheduleData = snap.data();
+              renderSchedule(currentScheduleData);
+              document.getElementById('loading-message').classList.add('hidden');
+            } else {
+              // 읽기는 되지만 문서가 여전히 없음 → 임시 표 유지
+              if (Object.keys(currentScheduleData).length === 0) {
+                currentScheduleData = buildInitialData();
+                renderSchedule(currentScheduleData);
+                document.getElementById('loading-message').classList.add('hidden');
+                showNotification('문서가 없어 임시 표를 표시합니다. 초기화 권한을 확인하세요.', false);
+              }
+            }
+          }, (error) => {
+            console.error('실시간 업데이트 오류:', error);
+            document.getElementById('error-message').textContent = `데이터 로딩 오류: ${error.message}`;
+            document.getElementById('error-message').classList.remove('hidden');
+            document.getElementById('loading-message').classList.add('hidden');
+          });
+
+        } catch (e) {
+          console.error('문서 확인 오류:', e);
+          document.getElementById('error-message').textContent = `문서 확인 오류: ${e.message}`;
+          document.getElementById('error-message').classList.remove('hidden');
+          document.getElementById('loading-message').classList.add('hidden');
+        }
+      })();
+    }
+
+    // =================== 렌더링 ===================
+    function renderSchedule(scheduleData) {
+      const container = document.getElementById('schedule-container');
+      container.innerHTML = '';
+      container.style.display = 'grid';
+      container.style.gridTemplateColumns = `80px 80px repeat(${ALL_DATES.length}, minmax(200px, 1fr))`;
+
+      // 헤더
+      let headerHtml = `<div class="header-cell sticky-top sticky-col-1">교시</div>`;
+      headerHtml += `<div class="header-cell sticky-top sticky-col-2">시간</div>`;
+      ALL_DATES.forEach(date => {
+        const dayName = getDayName(date);
+        headerHtml += `<div class="header-cell sticky-top day-header">${date.slice(5).replace('-', '/')} (${dayName})</div>`;
+      });
+      container.innerHTML += headerHtml;
+
+      // 교시별 행
+      for (let period = 1; period <= 6; period++) {
+        container.innerHTML += `<div class="grid-cell sticky-col-1 bg-gray-200 font-semibold">${period}교시</div>`;
+        container.innerHTML += `<div class="grid-cell sticky-col-2 bg-gray-200 text-xs text-gray-600">${PERIOD_TIMES[period]}</div>`;
+
+        ALL_DATES.forEach(date => {
+          const periodData = scheduleData[date]?.[period] || {};
+          const inputHtml = createInputElements(date, period, periodData);
+          container.innerHTML += `<div class="grid-cell text-left">${inputHtml}</div>`;
+        });
+
+        if (period === 4) {
+          container.innerHTML += `
+            <div class="grid-cell sticky-col-1 bg-yellow-100 text-yellow-800 font-bold text-xs py-3 text-center border-b-2 border-yellow-400">점심</div>
+            <div class="grid-cell sticky-col-2 bg-yellow-100 text-yellow-800 font-bold text-xs py-3 text-center border-b-2 border-yellow-400">시간</div>`;
+          ALL_DATES.forEach(() => {
+            container.innerHTML += `<div class="grid-cell bg-yellow-100 text-yellow-800 font-bold text-xs py-3 border-b-2 border-yellow-400">12:10~1:00</div>`;
+          });
+        }
+      }
+    }
+
+    function createInputElements(date, period, periodData) {
+      let inputsHtml = '';
+      GRADE_LIST.forEach(grade => {
+        const subject = periodData[grade] || '';
+        inputsHtml += `
+          <div class="flex items-center space-x-1 mb-1 last:mb-0">
+            <label class="text-xs font-semibold text-gray-700 w-10 shrink-0">${grade}:</label>
+            <input
+              type="text"
+              value="${subject}"
+              placeholder="교과목"
+              title="${date.slice(5).replace('-', '/')} ${period}교시 ${grade} 수업"
+              data-date="${date}"
+              data-period="${period}"
+              data-grade="${grade}"
+              onchange="handleInputChange(this)"
+              class="subject-input"
+            >
+          </div>`;
+      });
+      return `<div class="grade-input-group">${inputsHtml}</div>`;
+    }
+
+    // =================== 업데이트 핸들러 ===================
+    window.handleInputChange = async function(inputElement) {
+      const date = inputElement.getAttribute('data-date');
+      const period = inputElement.getAttribute('data-period');
+      const grade = inputElement.getAttribute('data-grade');
+      const newValue = inputElement.value;
+
+      if (!db) {
+        showNotification("오류: 데이터베이스 연결이 준비되지 않았습니다.", false);
+        return;
+      }
+      const docRef = doc(db, SCHEDULE_DOC_PATH);
+
+      try {
+        // ✅ FieldPath로 안전하게 업데이트 (한글/공백/기호 포함 키)
+        const fp = new FieldPath(date, String(period), grade);
+        await updateDoc(docRef, fp, newValue);
+      } catch (e) {
+        console.error("데이터 업데이트 실패:", e);
+        showNotification(`업데이트 실패: ${e.message}`, false);
+      }
+    };
+
+    // =================== 마크다운 내보내기 ===================
+    window.exportScheduleToMarkdown = function() {
+      if (Object.keys(currentScheduleData).length === 0) {
+        showNotification("오류: 저장된 시간표 데이터가 없습니다.", false);
+        return;
+      }
+      let md = `## 🗓️ 최종 확정 수업 시간표 (2025년 10월 27일 ~ 11월 14일)\n\n`;
+      md += `| 교시/시간 | ${ALL_DATES.map(d => d.slice(5).replace('-', '/') + ' (' + getDayName(d) + ')').join(' | ')} |\n`;
+      md += `| :---: | ${ALL_DATES.map(()=>'---').join('|')} |\n`;
+
+      ['1','2','3','4','5','6'].forEach(p => {
+        let row = `| ${p}교시 (${PERIOD_TIMES[p]}) |`;
+        ALL_DATES.forEach(date => {
+          const periodData = currentScheduleData[date]?.[p] || {};
+          let cell = '';
+          GRADE_LIST.forEach(grade => {
+            const subject = periodData[grade] || '-';
+            cell += `**${grade.replace('학년','학')}**: ${subject} / `;
+          });
+          cell = cell.trim().slice(0, -1);
+          row += ` ${cell} |`;
+        });
+        md += row + '\n';
+
+        if (p === '4') {
+          const lunchCells = ALL_DATES.map(() => `**점심 (12:10~1:00)**`).join(' | ');
+          md += `| **점심시간** | ${lunchCells} |\n`;
+        }
+      });
+
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = md; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+        showNotification("시간표 내용이 클립보드에 복사되었습니다!", true);
+      } catch (err) {
+        console.error('클립보드 복사 실패:', err);
+        showNotification("클립보드 복사에 실패했습니다.", false);
+      }
+    };
+
+    // =================== 토스트 ===================
+    function showNotification(message, success) {
+      const n = document.getElementById('notification');
+      n.textContent = message;
+      n.style.backgroundColor = success ? '#10b981' : '#ef4444';
+      n.classList.add('show');
+      setTimeout(() => n.classList.remove('show'), 3000);
+    }
+
+    // 시작
+    window.onload = initFirebase;
+  </script>
+</head>
+<body class="bg-gray-50 text-gray-800 p-4 sm:p-8">
+  <!-- Notification Toast -->
+  <div id="notification"></div>
+
+  <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-2xl p-6 sm:p-10">
+    <header class="mb-8 border-b pb-4 flex justify-between items-center flex-wrap gap-4">
+      <div>
+        <h1 class="text-3xl font-extrabold text-gray-900 mb-2">🗓️ 수업 시간표 교과목 공동 입력 시스템</h1>
+        <p class="text-gray-600 text-sm">
+          **기간:** 2025년 10월 27일 (월) ~ 11월 14일 (금) (총 15일) | **시간:** 1~6교시, 40분 수업
+        </p>
+      </div>
+      <button onclick="exportScheduleToMarkdown()"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-200 shrink-0">
+        💾 스케줄 내보내기 (마크다운)
+      </button>
+    </header>
+
+    <div class="mt-4 mb-8 text-sm p-4 border rounded-lg bg-gray-50">
+      <p class="font-medium">
+        환경 모드: <span id="env-mode" class="font-mono text-gray-700 bg-gray-200 p-1 rounded-md text-xs">확인 중...</span>
+        | 사용자 ID (공동 작업자 확인용): <span id="user-id" class="font-mono text-blue-600 bg-blue-100 p-1 rounded-md text-xs">로딩 중...</span>
+      </p>
+      <p>인증 상태: <span id="auth-status" class="text-red-500 font-semibold">초기화 중...</span></p>
+      <div id="error-message" class="hidden text-center py-2 text-red-600 font-semibold mt-2 border-t border-red-300"></div>
+    </div>
+
+    <div id="loading-message" class="text-center py-12 text-lg text-gray-500">
+      실시간 시간표 데이터를 로딩 중입니다...
+    </div>
+
+    <div id="schedule-container"
+      class="schedule-grid grid border border-gray-200 rounded-lg overflow-x-auto">
+      <!-- JS에서 렌더링 -->
+    </div>
+
+    <footer class="mt-8 pt-4 border-t text-sm text-gray-500 text-center">
+      <p>모든 변경 사항은 실시간으로 저장 및 공유됩니다. 교과목 입력 후 엔터(Enter)를 누르거나 다른 칸을 선택하면 저장됩니다.</p>
+    </footer>
+  </div>
+</body>
+</html>
