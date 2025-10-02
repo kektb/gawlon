@@ -93,14 +93,14 @@
         // Firebase Console에서 복사한 실제 웹 앱 구성 정보를 아래에 붙여넣으세요.
         // *******************************************************************
         const firebaseConfig = {
-           apiKey: "AIzaSyDyiPpRmnm1hZWsHAlD860AuhGcdJKEfC4",
-           authDomain: "galwon.firebaseapp.com",
-           projectId: "galwon",
-           storageBucket: "galwon.firebasestorage.app",
-           messagingSenderId: "165546187721",
-           appId: "1:165546187721:web:4ea575eaf31523096f2618",
-           measurementId: "G-PXSRPV7ZWM"
-        };
+  apiKey: "AIzaSyDyiPpRmnm1hZWsHAlD860AuhGcdJKEfC4",
+  authDomain: "galwon.firebaseapp.com",
+  projectId: "galwon",
+  storageBucket: "galwon.firebasestorage.app",
+  messagingSenderId: "165546187721",
+  appId: "1:165546187721:web:4ea575eaf31523096f2618",
+  measurementId: "G-PXSRPV7ZWM"
+};
         
         // Firestore Paths and IDs
         // 외부 배포 시에는 projectId를 appId로 사용합니다.
@@ -178,6 +178,7 @@
                 // setLogLevel('Debug'); // Enable for debugging
                 
                 // 외부 배포 환경에서는 익명 인증(signInAnonymously)만 시도
+                // 이 익명 인증을 사용하려면 Firebase Console에서 'Anonymous' 로그인이 활성화되어야 합니다.
                 await signInAnonymously(auth);
 
                 onAuthStateChanged(auth, (user) => {
