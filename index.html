@@ -78,7 +78,7 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, getDoc, updateDoc, collection, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global Firebase instances
@@ -88,8 +88,24 @@
         let userId = 'loading';
         let currentScheduleData = {}; // 현재 시간표 데이터를 저장할 전역 변수
 
+        // *******************************************************************
+        // ****** ⚠️ 외부 배포 시 필수 설정: 사용자 Firebase 환경설정 ******
+        // Firebase Console에서 복사한 실제 웹 앱 구성 정보를 아래에 붙여넣으세요.
+        // *******************************************************************
+        const firebaseConfig = {
+           apiKey: "AIzaSyDyiPpRmnm1hZWsHAlD860AuhGcdJKEfC4",
+           authDomain: "galwon.firebaseapp.com",
+           projectId: "galwon",
+           storageBucket: "galwon.firebasestorage.app",
+           messagingSenderId: "165546187721",
+           appId: "1:165546187721:web:4ea575eaf31523096f2618",
+           measurementId: "G-PXSRPV7ZWM"
+        };
+        
         // Firestore Paths and IDs
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // 외부 배포 시에는 projectId를 appId로 사용합니다.
+        // projectId가 비어있으면 'default-app-id'를 사용합니다.
+        const appId = firebaseConfig.projectId !== '' ? firebaseConfig.projectId : 'default-app-id';
         const SCHEDULE_DOC_PATH = `/artifacts/${appId}/public/data/class_schedule/schedule_data`;
 
         // Grades used for input fields
@@ -137,19 +153,32 @@
         // --- Firebase Initialization and Auth ---
 
         async function initFirebase() {
+             // Firebase 설정값 유효성 검사 (apiKey 또는 projectId가 비어있는 경우)
+            if (firebaseConfig.apiKey === "" || firebaseConfig.projectId === "") {
+                const errorMessage = "⚠️ Firebase 설정 오류: 'schedule_app.html' 파일 내 <script> 블록에서 firebaseConfig의 'apiKey'와 'projectId' 값을 본인의 Firebase 프로젝트 정보로 채워주세요.";
+                console.error(errorMessage);
+                // 오류 메시지를 UI에 표시
+                document.getElementById('auth-status').textContent = '설정 필요';
+                document.getElementById('auth-status').classList.add('text-red-500', 'font-bold');
+                document.getElementById('error-message').innerHTML = `
+                    <div class="font-bold">인증 실패: Firebase 설정 정보 누락</div>
+                    <div class="mt-1">${errorMessage}</div>
+                `;
+                document.getElementById('error-message').classList.remove('hidden');
+                document.getElementById('loading-message').classList.add('hidden');
+                return; // 초기화 중단
+            }
+
             try {
-                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+                // 앱 초기화는 하드코딩된 config를 사용
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
                 // setLogLevel('Debug'); // Enable for debugging
                 
-                if (typeof __initial_auth_token !== 'undefined') {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                // 외부 배포 환경에서는 익명 인증(signInAnonymously)만 시도
+                await signInAnonymously(auth);
 
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
@@ -167,8 +196,11 @@
 
             } catch (error) {
                 console.error("Firebase 초기화 또는 인증 오류:", error);
-                document.getElementById('auth-status').textContent = '초기화 오류';
+                document.getElementById('auth-status').textContent = `초기화 오류: ${error.message}`;
                 document.getElementById('auth-status').classList.add('text-red-500');
+                document.getElementById('error-message').textContent = `Firebase 초기화 중 오류가 발생했습니다: ${error.message}`;
+                document.getElementById('error-message').classList.remove('hidden');
+                document.getElementById('loading-message').classList.add('hidden');
             }
         }
 
