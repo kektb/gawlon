@@ -134,7 +134,7 @@
         const firebaseConfig = isCanvasEnvironment ? (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {}) : EXTERNAL_FIREBASE_CONFIG;
         const appId = isCanvasEnvironment ? (typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId || 'default-app-id-canvas') : (firebaseConfig.projectId || 'default-app-id-external');
         
-        const SCHEDULE_DOC_PATH = `/artifacts/${appId}/public/data/class_schedule/schedule_data`;
+        const SCHEDULE_DOC_PATH = `artifacts/${appId}/public/data/class_schedule/schedule_data`;
 
         // Grades used for input fields
         const GRADE_LIST = ['2학년', '3학년', '4학년', '5학년', '6학년'];
@@ -501,3 +501,4 @@
     </div>
 </body>
 </html>
+
