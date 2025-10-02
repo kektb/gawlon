@@ -9,27 +9,31 @@
     :root { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif; }
     .grid-cell { padding:4px; border:1px solid #e5e7eb; text-align:center; font-size:.85rem; }
     .header-cell { background:#1f2937; color:#fff; font-weight:600; padding:10px 4px; }
-    .subject-input { padding:4px 8px; border:1px solid #d1d5db; border-radius:.375rem; font-size:.75rem; width:100%; transition:.2s; }
+    .subject-input { padding:4px 8px; border:1px solid #d1d5db; border-radius:.375rem; font-size:.8rem; width:100%; transition:.2s; }
     .subject-input:focus { outline:0; border-color:#3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.5); }
     .header-cell.sticky-top { position:sticky; top:0; z-index:15; }
     .header-cell.sticky-col-1 { left:0; z-index:20; }
     .header-cell.sticky-col-2 { left:80px; z-index:20; }
     .grid-cell.sticky-col-1 { position:sticky; left:0; z-index:5; background:#f3f4f6; border-right:1px solid #e5e7eb; }
     .grid-cell.sticky-col-2 { position:sticky; left:80px; z-index:5; background:#f3f4f6; border-right:1px solid #e5e7eb; }
-    @media (max-width: 768px){ .grade-input-group{display:flex;flex-direction:column;gap:4px} .subject-input{font-size:.8rem} }
-    /* 에러 오버레이 */
+    @media (max-width: 768px){ .grade-input-group{display:flex;flex-direction:column;gap:4px} }
+    /* 에러/상태 오버레이 */
     #fatal { display:none; position:fixed; left:0; right:0; top:0; padding:10px 14px; background:#fee2e2; color:#991b1b; border-bottom:1px solid #fecaca; z-index:10000; font-size:.9rem; white-space:pre-wrap; }
+    .badge { padding:2px 8px; border-radius:9999px; font-size:.7rem; font-weight:600 }
+    .ok { background:#dcfce7; color:#166534 }
+    .warn { background:#fef9c3; color:#854d0e }
+    .err { background:#fee2e2; color:#991b1b }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-800 p-4 sm:p-8">
   <!-- Fatal error overlay -->
   <div id="fatal"></div>
 
-  <!-- Notification Toast -->
-  <div id="notification" class="fixed top-5 right-5 text-white px-4 py-2 rounded-lg shadow" style="opacity:0;transition:.3s"></div>
+  <!-- Toast -->
+  <div id="toast" class="fixed top-5 right-5 text-white px-4 py-2 rounded-lg shadow" style="opacity:0;transition:.3s"></div>
 
   <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-2xl p-6 sm:p-10">
-    <header class="mb-8 border-b pb-4 flex justify-between items-center flex-wrap gap-4">
+    <header class="mb-6 border-b pb-4 flex justify-between items-center flex-wrap gap-4">
       <div>
         <h1 class="text-3xl font-extrabold text-gray-900 mb-2">🗓️ 수업 시간표 교과목 공동 입력 시스템</h1>
         <p class="text-gray-600 text-sm">
@@ -43,88 +47,81 @@
       </button>
     </header>
 
-    <div class="mt-4 mb-8 text-sm p-4 border rounded-lg bg-gray-50">
-      <p class="font-medium">
-        환경 모드: <span id="env-mode" class="font-mono text-gray-700 bg-gray-200 p-1 rounded-md text-xs">확인 중...</span>
-        | 사용자 ID (공동 작업자 확인용): <span id="user-id" class="font-mono text-blue-600 bg-blue-100 p-1 rounded-md text-xs">로딩 중...</span>
+    <div class="mt-2 mb-6 text-sm p-4 border rounded-lg bg-gray-50">
+      <p class="font-medium flex flex-wrap items-center gap-2">
+        환경 모드: <span id="env-mode" class="font-mono text-gray-700 bg-gray-200 px-2 py-0.5 rounded-md text-xs">확인 중...</span>
+        | 사용자 ID: <span id="user-id" class="font-mono text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md text-xs">-</span>
+        | 연결 상태: <span id="conn" class="badge warn">초기화중</span>
+        | 동기화: <span id="sync" class="badge warn">대기</span>
       </p>
-      <p>인증 상태: <span id="auth-status" class="text-red-500 font-semibold">초기화 중...</span></p>
+      <p class="mt-1">인증 상태: <span id="auth-status" class="text-red-500 font-semibold">초기화 중...</span></p>
       <div id="error-message" class="hidden text-center py-2 text-red-600 font-semibold mt-2 border-t border-red-300"></div>
     </div>
 
-    <div id="loading-message" class="text-center py-12 text-lg text-gray-500">
-      실시간 시간표 데이터를 로딩 중입니다...
-    </div>
-
-    <div id="schedule-container" class="schedule-grid grid border border-gray-200 rounded-lg overflow-x-auto"></div>
+    <div id="schedule-container" class="schedule-grid grid border border-gray-200 rounded-lg overflow-x-auto min-h-[240px]"></div>
 
     <footer class="mt-8 pt-4 border-t text-sm text-gray-500 text-center">
       <p>모든 변경 사항은 실시간으로 저장 및 공유됩니다. 교과목 입력 후 엔터(Enter)를 누르거나 다른 칸을 선택하면 저장됩니다.</p>
     </footer>
   </div>
 
-  <!-- 모듈 스크립트: body 끝에서 로드 (초기 화면은 무조건 먼저 보이게) -->
+  <!-- 에러/토스트 유틸 -->
   <script>
-    // 에러 오버레이: 어떤 런타임 에러도 화면에 띄움
     window.addEventListener('error', (e) => {
       const el = document.getElementById('fatal');
       el.style.display = 'block';
       el.textContent = '오류: ' + (e.error?.message || e.message);
+      document.getElementById('conn').className='badge err'; document.getElementById('conn').textContent='오류';
     });
     window.addEventListener('unhandledrejection', (e) => {
       const el = document.getElementById('fatal');
       el.style.display = 'block';
       el.textContent = '오류(비동기): ' + (e.reason?.message || String(e.reason));
+      document.getElementById('conn').className='badge err'; document.getElementById('conn').textContent='오류';
     });
-    // 토스트
-    window.showNotification = function(msg, ok){
-      const n = document.getElementById('notification');
-      n.textContent = msg;
-      n.style.backgroundColor = ok ? '#10b981' : '#ef4444';
-      n.style.opacity = '1';
-      setTimeout(()=> n.style.opacity='0', 3000);
+    window.toast = (msg, ok=true) => {
+      const t=document.getElementById('toast');
+      t.textContent=msg; t.style.backgroundColor = ok ? '#10b981' : '#ef4444';
+      t.style.opacity='1'; setTimeout(()=> t.style.opacity='0', 3000);
     };
-    // 유틸
     window.getDayName = (ds) => ['일','월','화','수','목','금','토'][new Date(ds).getDay()];
   </script>
 
+  <!-- 메인 모듈 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, onSnapshot, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // ====== 상태 ======
-    let app, db, auth;
-    let userId = 'loading';
-    let currentScheduleData = {};
-
-    // ====== 설정 ======
+    // ===== 설정 =====
     const EXTERNAL_FIREBASE_CONFIG = {
       apiKey: "AIzaSyDyiPpRmnm1hZWsHAlD860AuhGcdJKEfC4",
       authDomain: "galwon.firebaseapp.com",
       projectId: "galwon",
-      storageBucket: "galwon.firebasestorage.app",
+      storageBucket: "galwon.appspot.com",   // <- 형식 보정 (appspot.com)
       messagingSenderId: "165546187721",
       appId: "1:165546187721:web:4ea575eaf31523096f2618",
       measurementId: "G-PXSRPV7ZWM"
     };
+    const isCanvas = typeof window.__firebase_config !== 'undefined';
+    const firebaseConfig = isCanvas ? JSON.parse(window.__firebase_config || '{}') : EXTERNAL_FIREBASE_CONFIG;
+    const appId = isCanvas ? (window.__app_id || firebaseConfig.projectId || 'default-app-id-canvas')
+                           : (firebaseConfig.projectId || 'default-app-id-external');
 
-    const isCanvasEnvironment = typeof window.__firebase_config !== 'undefined';
-    const firebaseConfig = isCanvasEnvironment ? JSON.parse(window.__firebase_config || '{}') : EXTERNAL_FIREBASE_CONFIG;
-    const appId = isCanvasEnvironment ? (window.__app_id || firebaseConfig.projectId || 'default-app-id-canvas') : (firebaseConfig.projectId || 'default-app-id-external');
+    // ✅ 유효한 Firestore 경로 (col/doc/col/doc/col/doc)
     const SCHEDULE_DOC_PATH = `artifacts/${appId}/public/data/class_schedule/schedule_data`;
 
     const GRADE_LIST = ['2학년','3학년','4학년','5학년','6학년'];
     const PERIOD_TIMES = { '1':'09:00~09:40','2':'09:50~10:30','3':'10:40~11:20','4':'11:30~12:10','5':'01:00~01:40','6':'01:40~02:20' };
 
-    function generateDates(){
-      const dates=[]; let d=new Date('2025-10-27T00:00:00'); const end=new Date('2025-11-14T00:00:00');
-      while(d<=end){ const w=d.getDay(); if(w>=1&&w<=5){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'); dates.push(`${y}-${m}-${day}`); } d.setDate(d.getDate()+1); }
-      return dates;
+    function daysInRange(){
+      const out=[]; let d=new Date('2025-10-27T00:00:00'); const end=new Date('2025-11-14T00:00:00');
+      while(d<=end){ const w=d.getDay(); if(w>=1&&w<=5){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); } d.setDate(d.getDate()+1); }
+      return out;
     }
-    const ALL_DATES = generateDates();
+    const ALL_DATES = daysInRange();
 
-    function buildInitialData(){
+    function buildInitial(){
       const init={};
       ALL_DATES.forEach(date=>{
         init[date]={};
@@ -135,164 +132,160 @@
       return init;
     }
 
-    // ====== 렌더 ======
-    function renderSchedule(scheduleData){
-      const container = document.getElementById('schedule-container');
-      container.innerHTML='';
-      container.style.display='grid';
-      container.style.gridTemplateColumns=`80px 80px repeat(${ALL_DATES.length}, minmax(200px, 1fr))`;
+    // ===== 전역 상태 =====
+    let app, db, auth, current = {};
+
+    // ===== 낙관적 즉시 렌더 =====
+    function render(data){
+      const c = document.getElementById('schedule-container');
+      c.innerHTML='';
+      c.style.display='grid';
+      c.style.gridTemplateColumns=`80px 80px repeat(${ALL_DATES.length}, minmax(200px, 1fr))`;
 
       let header = `<div class="header-cell sticky-top sticky-col-1">교시</div>`;
       header += `<div class="header-cell sticky-top sticky-col-2">시간</div>`;
       ALL_DATES.forEach(date=>{
         header += `<div class="header-cell sticky-top">${date.slice(5).replace('-','/')} (${window.getDayName(date)})</div>`;
       });
-      container.insertAdjacentHTML('beforeend', header);
+      c.insertAdjacentHTML('beforeend', header);
 
-      for(let period=1; period<=6; period++){
-        container.insertAdjacentHTML('beforeend', `<div class="grid-cell sticky-col-1 bg-gray-200 font-semibold">${period}교시</div>`);
-        container.insertAdjacentHTML('beforeend', `<div class="grid-cell sticky-col-2 bg-gray-200 text-xs text-gray-600">${PERIOD_TIMES[period]}</div>`);
+      for(let p=1;p<=6;p++){
+        c.insertAdjacentHTML('beforeend', `<div class="grid-cell sticky-col-1 bg-gray-200 font-semibold">${p}교시</div>`);
+        c.insertAdjacentHTML('beforeend', `<div class="grid-cell sticky-col-2 bg-gray-200 text-xs text-gray-600">${PERIOD_TIMES[p]}</div>`);
         ALL_DATES.forEach(date=>{
-          const periodData = scheduleData[date]?.[period] || {};
-          container.insertAdjacentHTML('beforeend', `<div class="grid-cell text-left">${createInputElements(date, period, periodData)}</div>`);
+          const row = data[date]?.[p] || {};
+          c.insertAdjacentHTML('beforeend', `<div class="grid-cell text-left">${inputs(date,p,row)}</div>`);
         });
-        if(period===4){
-          container.insertAdjacentHTML('beforeend', `
+        if(p===4){
+          c.insertAdjacentHTML('beforeend', `
             <div class="grid-cell sticky-col-1 bg-yellow-100 text-yellow-800 font-bold text-xs py-3 text-center border-b-2 border-yellow-400">점심</div>
             <div class="grid-cell sticky-col-2 bg-yellow-100 text-yellow-800 font-bold text-xs py-3 text-center border-b-2 border-yellow-400">시간</div>`);
-          ALL_DATES.forEach(()=> container.insertAdjacentHTML('beforeend', `<div class="grid-cell bg-yellow-100 text-yellow-800 font-bold text-xs py-3 border-b-2 border-yellow-400">12:10~1:00</div>`));
+          ALL_DATES.forEach(()=> c.insertAdjacentHTML('beforeend', `<div class="grid-cell bg-yellow-100 text-yellow-800 font-bold text-xs py-3 border-b-2 border-yellow-400">12:10~1:00</div>`));
         }
       }
     }
-
-    function createInputElements(date, period, periodData){
+    function inputs(date, period, data){
       let html='';
-      GRADE_LIST.forEach(grade=>{
-        const subject = periodData[grade] || '';
+      GRADE_LIST.forEach(g=>{
+        const v = data[g] ?? '';
         html += `
           <div class="flex items-center space-x-1 mb-1 last:mb-0">
-            <label class="text-xs font-semibold text-gray-700 w-10 shrink-0">${grade}:</label>
-            <input type="text" value="${subject}" placeholder="교과목"
-              title="${date.slice(5).replace('-', '/')} ${period}교시 ${grade} 수업"
-              data-date="${date}" data-period="${period}" data-grade="${grade}"
-              class="subject-input" onchange="handleInputChange(this)">
+            <label class="text-xs font-semibold text-gray-700 w-10 shrink-0">${g}:</label>
+            <input type="text" value="${v}" placeholder="교과목"
+              title="${date.slice(5).replace('-', '/')} ${period}교시 ${g} 수업"
+              data-date="${date}" data-period="${period}" data-grade="${g}"
+              class="subject-input" onchange="handleChange(this)">
           </div>`;
       });
       return `<div class="grade-input-group">${html}</div>`;
     }
 
-    // ====== 이벤트 ======
-    window.handleInputChange = async (el)=>{
-      const date = el.getAttribute('data-date');
-      const period = el.getAttribute('data-period');
-      const grade = el.getAttribute('data-grade');
-      const value = el.value;
-      if(!db){ window.showNotification("DB가 준비되지 않았습니다.", false); return; }
-      const ref = doc(db, SCHEDULE_DOC_PATH);
+    // 즉시 그리기 & 로딩 문구 제거
+    current = buildInitial();
+    render(current);
+    document.getElementById('env-mode').textContent = isCanvas ? 'Canvas 환경' : '외부 브라우저';
+    document.getElementById('auth-status').textContent = '초기화 중...';
+    document.getElementById('conn').textContent='렌더완료'; document.getElementById('conn').className='badge ok';
+
+    // ===== Firestore 연결 =====
+    async function init(){
       try{
-        // 문자열 경로 사용 (한글 키 OK, 점(.)만 없으면 안전)
-        const path = `${date}.${period}.${grade}`;
-        await updateDoc(ref, { [path]: value });
+        app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
+        document.getElementById('conn').textContent='연결됨'; document.getElementById('conn').className='badge ok';
+
+        if(isCanvas && typeof window.__initial_auth_token !== 'undefined'){
+          await signInWithCustomToken(auth, window.__initial_auth_token);
+        }else{
+          await signInAnonymously(auth);
+        }
+
+        onAuthStateChanged(auth, (user)=>{
+          if(user){
+            document.getElementById('user-id').textContent = user.uid;
+            const s = document.getElementById('auth-status'); s.textContent='인증 완료'; s.classList.remove('text-red-500'); s.classList.add('text-green-500');
+            startSync();
+          }else{
+            document.getElementById('auth-status').textContent='인증 실패';
+            document.getElementById('sync').textContent='대기'; document.getElementById('sync').className='badge warn';
+          }
+        });
+
       }catch(e){
-        console.error(e);
-        window.showNotification(`업데이트 실패: ${e.message}`, false);
+        fatal('초기화 오류: ' + e.message);
+      }
+    }
+
+    function fatal(msg){
+      const el=document.getElementById('fatal'); el.style.display='block'; el.textContent=msg;
+      document.getElementById('conn').textContent='오류'; document.getElementById('conn').className='badge err';
+    }
+
+    async function startSync(){
+      try{
+        const ref = doc(db, SCHEDULE_DOC_PATH);
+        document.getElementById('sync').textContent='동기화중'; document.getElementById('sync').className='badge warn';
+
+        // 문서 없으면 생성 시도(권한 없으면 화면 유지)
+        const snap = await getDoc(ref);
+        if(!snap.exists()){
+          try{ await setDoc(ref, current); }
+          catch(e){ console.warn('초기 문서 생성 실패:', e); window.toast('초기 문서 생성 권한 없음 — 임시 표로 작업 중', false); }
+        }
+
+        onSnapshot(ref, (s)=>{
+          if(s.exists()){
+            current = s.data();
+            render(current);
+            document.getElementById('sync').textContent='동기화완료'; document.getElementById('sync').className='badge ok';
+          }else{
+            // 문서가 아직 없으면 현재 임시표 유지
+            document.getElementById('sync').textContent='문서없음(임시표)'; document.getElementById('sync').className='badge warn';
+          }
+        }, (err)=>{
+          fatal('실시간 오류: ' + err.message);
+        });
+
+      }catch(e){
+        fatal('동기화 시작 실패: ' + e.message);
+      }
+    }
+
+    // 입력 변경 → Firestore 업데이트 (권한 없으면 토스트만)
+    window.handleChange = async (el)=>{
+      const date = el.dataset.date, period = el.dataset.period, grade = el.dataset.grade, value = el.value;
+      try{
+        const ref = doc(getFirestore(), SCHEDULE_DOC_PATH);
+        const path = `${date}.${period}.${grade}`;   // 점(.)만 키에 없으면 안전
+        await updateDoc(ref, { [path]: value });
+        window.toast('저장됨', true);
+      }catch(e){
+        console.warn(e); window.toast('저장 실패: ' + e.message, false);
       }
     };
 
+    // 마크다운 내보내기
     window.exportScheduleToMarkdown = ()=>{
-      if(!Object.keys(currentScheduleData).length){ window.showNotification("저장된 데이터가 없습니다.", false); return; }
       let md = `## 🗓️ 최종 확정 수업 시간표 (2025년 10월 27일 ~ 11월 14일)\n\n`;
       md += `| 교시/시간 | ${ALL_DATES.map(d => d.slice(5).replace('-', '/') + ' (' + window.getDayName(d) + ')').join(' | ')} |\n`;
       md += `| :---: | ${ALL_DATES.map(()=> '---').join('|')} |\n`;
       ['1','2','3','4','5','6'].forEach(p=>{
         let row = `| ${p}교시 (${PERIOD_TIMES[p]}) |`;
         ALL_DATES.forEach(date=>{
-          const pd = currentScheduleData[date]?.[p] || {};
-          let cell = '';
-          GRADE_LIST.forEach(g=>{
-            const s = pd[g] || '-';
-            cell += `**${g.replace('학년','학')}**: ${s} / `;
-          });
-          cell = cell.trim().slice(0,-1);
-          row += ` ${cell} |`;
+          const pd = current[date]?.[p] || {};
+          const cell = ['2학년','3학년','4학년','5학년','6학년'].map(g=>`**${g.replace('학년','학')}**: ${pd[g]||'-'}`).join(' / ');
+          row += ' ' + cell + ' |';
         });
         md += row + '\n';
         if(p==='4'){ md += `| **점심시간** | ${ALL_DATES.map(()=> '**점심 (12:10~1:00)**').join(' | ')} |\n`; }
       });
       const ta=document.createElement('textarea'); ta.value=md; document.body.appendChild(ta); ta.select();
       document.execCommand('copy'); document.body.removeChild(ta);
-      window.showNotification("클립보드에 복사되었습니다!", true);
+      window.toast('클립보드에 복사되었습니다!', true);
     };
 
-    // ====== 초기화 ======
-    async function init(){
-      document.getElementById('env-mode').textContent = isCanvasEnvironment ? 'Canvas 환경' : '외부 브라우저';
-      try{
-        app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        auth = getAuth(app);
-        if(isCanvasEnvironment && typeof window.__initial_auth_token !== 'undefined'){
-          await signInWithCustomToken(auth, window.__initial_auth_token);
-        }else{
-          await signInAnonymously(auth);
-        }
-        onAuthStateChanged(auth, (user)=>{
-          if(user){
-            userId = user.uid;
-            document.getElementById('user-id').textContent = userId;
-            const s = document.getElementById('auth-status');
-            s.textContent='인증 완료'; s.classList.remove('text-red-500'); s.classList.add('text-green-500');
-            startScheduleListener();
-          }else{
-            document.getElementById('auth-status').textContent='인증 실패';
-          }
-        });
-      }catch(e){
-        const el=document.getElementById('fatal'); el.style.display='block'; el.textContent='초기화 오류: ' + e.message;
-        document.getElementById('loading-message').classList.add('hidden');
-      }
-    }
-
-    function startScheduleListener(){
-      const ref = doc(db, SCHEDULE_DOC_PATH);
-      (async ()=>{
-        try{
-          const snap = await getDoc(ref);
-          if(!snap.exists()){
-            const initial = buildInitialData();
-            try{ await setDoc(ref, initial); }
-            catch(e){
-              console.warn('초기 문서 생성 실패:', e);
-              currentScheduleData = initial;
-              renderSchedule(currentScheduleData);
-              document.getElementById('loading-message').classList.add('hidden');
-              window.showNotification('초기 문서를 만들 권한이 없어 임시 표를 표시합니다. Firestore 규칙을 확인하세요.', false);
-            }
-          }
-          onSnapshot(ref, (s)=>{
-            if(s.exists()){
-              currentScheduleData = s.data();
-              renderSchedule(currentScheduleData);
-              document.getElementById('loading-message').classList.add('hidden');
-            }else{
-              if(!Object.keys(currentScheduleData).length){
-                currentScheduleData = buildInitialData();
-                renderSchedule(currentScheduleData);
-                document.getElementById('loading-message').classList.add('hidden');
-                window.showNotification('문서가 없어 임시 표를 표시합니다. 권한을 확인하세요.', false);
-              }
-            }
-          }, (err)=>{
-            const el=document.getElementById('fatal'); el.style.display='block'; el.textContent='실시간 오류: ' + err.message;
-            document.getElementById('loading-message').classList.add('hidden');
-          });
-        }catch(e){
-          const el=document.getElementById('fatal'); el.style.display='block'; el.textContent='문서 확인 오류: ' + e.message;
-          document.getElementById('loading-message').classList.add('hidden');
-        }
-      })();
-    }
-
+    // 시작
     init();
   </script>
 </body>
